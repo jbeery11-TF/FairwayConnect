@@ -8,13 +8,16 @@ Data: fairway.db (created and seeded on first run)
 
 import hashlib
 import json
+import math
 import os
 import re
 import secrets
 import sqlite3
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from urllib.parse import urlparse, parse_qs
+from urllib.error import HTTPError, URLError
+from urllib.parse import urlparse, parse_qs, urlencode
+from urllib.request import Request, urlopen
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
 PUBLIC = os.path.join(ROOT, "public")
@@ -50,6 +53,7 @@ CREATE TABLE IF NOT EXISTS users (
   id INTEGER PRIMARY KEY, name TEXT NOT NULL, email TEXT UNIQUE NOT NULL,
   pass_hash TEXT NOT NULL, salt TEXT NOT NULL, color TEXT NOT NULL,
   headline TEXT DEFAULT '', location TEXT DEFAULT '', home_course TEXT DEFAULT '',
+  postal_code TEXT DEFAULT '',
   handicap REAL DEFAULT 36, rounds INTEGER DEFAULT 0, best INTEGER,
   about TEXT DEFAULT '', created_at REAL NOT NULL
 );
@@ -101,7 +105,8 @@ CREATE TABLE IF NOT EXISTS invites (
 CREATE TABLE IF NOT EXISTS teetimes (
   id INTEGER PRIMARY KEY, host_id INTEGER NOT NULL REFERENCES users(id),
   icon TEXT DEFAULT '⛳', title TEXT NOT NULL, course TEXT NOT NULL, when_text TEXT NOT NULL,
-  descr TEXT DEFAULT '', spots INTEGER DEFAULT 1, tags TEXT DEFAULT '[]', created_at REAL NOT NULL
+  postal_code TEXT DEFAULT '', descr TEXT DEFAULT '', spots INTEGER DEFAULT 1,
+  tags TEXT DEFAULT '[]', created_at REAL NOT NULL
 );
 CREATE TABLE IF NOT EXISTS teetime_requests (
   teetime_id INTEGER NOT NULL REFERENCES teetimes(id), user_id INTEGER NOT NULL REFERENCES users(id),
@@ -294,6 +299,12 @@ def init_db():
     fresh = not os.path.exists(DB_PATH)
     conn = db()
     conn.executescript(SCHEMA)
+    user_columns = {r["name"] for r in conn.execute("PRAGMA table_info(users)")}
+    if "postal_code" not in user_columns:
+        conn.execute("ALTER TABLE users ADD COLUMN postal_code TEXT DEFAULT ''")
+    teetime_columns = {r["name"] for r in conn.execute("PRAGMA table_info(teetimes)")}
+    if "postal_code" not in teetime_columns:
+        conn.execute("ALTER TABLE teetimes ADD COLUMN postal_code TEXT DEFAULT ''")
     # Upgrade databases created before hosts could accept or decline tee-time requests.
     request_columns = {r["name"] for r in conn.execute("PRAGMA table_info(teetime_requests)")}
     if "status" not in request_columns:
@@ -317,7 +328,80 @@ class ApiError(Exception):
 def user_brief(row):
     return {"id": row["id"], "name": row["name"], "color": row["color"],
             "headline": row["headline"], "homeCourse": row["home_course"],
-            "handicap": row["handicap"]}
+            "zipCode": row["postal_code"], "handicap": row["handicap"]}
+
+
+COURSE_CACHE = {}
+
+
+def haversine_miles(lat1, lon1, lat2, lon2):
+    radius = 3958.8
+    p1, p2 = math.radians(lat1), math.radians(lat2)
+    dp = math.radians(lat2 - lat1)
+    dl = math.radians(lon2 - lon1)
+    a = math.sin(dp / 2) ** 2 + math.cos(p1) * math.cos(p2) * math.sin(dl / 2) ** 2
+    return radius * 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
+
+
+def fetch_json(url, data=None, timeout=12):
+    req = Request(url, data=data, headers={
+        "Accept": "application/json",
+        "User-Agent": "FairwayConnectPilot/1.0",
+    })
+    try:
+        with urlopen(req, timeout=timeout) as response:
+            return json.load(response)
+    except (HTTPError, URLError, TimeoutError, json.JSONDecodeError):
+        raise ApiError(502, "Course lookup is temporarily unavailable — try again shortly")
+
+
+def lookup_golf_courses(postal_code, radius_miles=15):
+    cache_key = (postal_code, radius_miles)
+    cached = COURSE_CACHE.get(cache_key)
+    if cached and time.time() - cached[0] < 86400:
+        return cached[1]
+
+    place_data = fetch_json(f"https://api.zippopotam.us/us/{postal_code}")
+    places = place_data.get("places") or []
+    if not places:
+        raise ApiError(404, "ZIP code not found")
+    place = places[0]
+    lat, lon = float(place["latitude"]), float(place["longitude"])
+    radius_meters = round(radius_miles * 1609.344)
+    query = (
+        f'[out:json][timeout:20];('
+        f'nwr["leisure"="golf_course"](around:{radius_meters},{lat},{lon});'
+        f');out center tags;')
+    osm = fetch_json(
+        "https://overpass-api.de/api/interpreter",
+        urlencode({"data": query}).encode(), timeout=25)
+    courses = []
+    seen = set()
+    for element in osm.get("elements", []):
+        tags = element.get("tags") or {}
+        name = (tags.get("name") or "").strip()
+        center = element.get("center") or element
+        if not name or "lat" not in center or "lon" not in center:
+            continue
+        key = name.casefold()
+        if key in seen:
+            continue
+        seen.add(key)
+        courses.append({
+            "name": name,
+            "distanceMiles": round(haversine_miles(lat, lon, center["lat"], center["lon"]), 1),
+            "city": tags.get("addr:city", ""),
+            "state": tags.get("addr:state", place.get("state abbreviation", "")),
+        })
+    courses.sort(key=lambda c: (c["distanceMiles"], c["name"]))
+    result = {
+        "zipCode": postal_code,
+        "radiusMiles": radius_miles,
+        "location": f'{place.get("place name", "")}, {place.get("state abbreviation", "")}'.strip(", "),
+        "courses": courses[:30],
+    }
+    COURSE_CACHE[cache_key] = (time.time(), result)
+    return result
 
 
 def get_user(conn, uid):
@@ -479,6 +563,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self.r_network(conn, uid)
             if p == ["teetimes"]:
                 return self.r_teetimes(conn, uid)
+            if p == ["courses"]:
+                return self.r_courses(query)
             if p == ["threads"]:
                 return self.r_threads(conn, uid)
             if len(p) == 2 and p[0] == "threads":
@@ -541,12 +627,15 @@ class Handler(BaseHTTPRequestHandler):
         name = (b.get("name") or "").strip()
         email = (b.get("email") or "").strip().lower()
         password = b.get("password") or ""
+        postal_code = (b.get("zipCode") or "").strip()
         if not name or len(name) > 60:
             raise ApiError(400, "Please enter your name")
         if not re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", email):
             raise ApiError(400, "Please enter a valid email")
         if len(password) < 8:
             raise ApiError(400, "Password must be at least 8 characters")
+        if postal_code and not re.match(r"^\d{5}$", postal_code):
+            raise ApiError(400, "ZIP code must be 5 digits")
         if conn.execute("SELECT 1 FROM users WHERE email=?", (email,)).fetchone():
             raise ApiError(409, "An account with that email already exists")
         salt = secrets.token_hex(16)
@@ -556,11 +645,11 @@ class Handler(BaseHTTPRequestHandler):
         except (TypeError, ValueError):
             handicap = 36.0
         cur = conn.execute(
-            "INSERT INTO users (name,email,pass_hash,salt,color,headline,home_course,handicap,"
-            "created_at) VALUES (?,?,?,?,?,?,?,?,?)",
+            "INSERT INTO users (name,email,pass_hash,salt,color,headline,home_course,postal_code,"
+            "handicap,created_at) VALUES (?,?,?,?,?,?,?,?,?,?)",
             (name, email, hash_pw(password, salt), salt, color,
              (b.get("headline") or "Golfer").strip()[:120],
-             (b.get("homeCourse") or "").strip()[:80], handicap, time.time()))
+             (b.get("homeCourse") or "").strip()[:80], postal_code, handicap, time.time()))
         uid = cur.lastrowid
         for s in ("Driving", "Putting", "Course Management"):
             conn.execute("INSERT INTO skills (user_id,name) VALUES (?,?)", (uid, s))
@@ -709,7 +798,8 @@ class Handler(BaseHTTPRequestHandler):
             if t["host_id"] == uid:
                 for r in conn.execute(
                         "SELECT tr.status, users.id, users.name, users.color, users.headline, "
-                        "users.home_course, users.handicap FROM teetime_requests tr "
+                        "users.home_course, users.postal_code, users.handicap "
+                        "FROM teetime_requests tr "
                         "JOIN users ON users.id=tr.user_id "
                         "WHERE tr.teetime_id=? AND tr.status IN ('pending','accepted') "
                         "ORDER BY CASE tr.status WHEN 'pending' THEN 0 ELSE 1 END, users.name",
@@ -717,14 +807,27 @@ class Handler(BaseHTTPRequestHandler):
                     requests.append({**user_brief(r), "status": r["status"]})
             out.append({
                 "id": t["id"], "icon": t["icon"], "title": t["title"], "course": t["course"],
-                "when": t["when_text"], "desc": t["descr"], "tags": json.loads(t["tags"]),
+                "when": t["when_text"], "postalCode": t["postal_code"],
+                "desc": t["descr"], "tags": json.loads(t["tags"]),
                 "spotsLeft": max(0, t["spots"] - taken),
                 "host": {"id": t["host_id"], "name": t["host_name"]},
                 "mine": t["host_id"] == uid,
                 "requestStatus": request["status"] if request else None,
                 "requests": requests,
             })
-        return {"teetimes": out}
+        return {"teetimes": out, "myZip": get_user(conn, uid)["postal_code"]}
+
+    def r_courses(self, query):
+        postal_code = (query.get("zip") or [""])[0].strip()
+        if not re.match(r"^\d{5}$", postal_code):
+            raise ApiError(400, "Enter a valid 5-digit ZIP code")
+        try:
+            radius = int((query.get("radius") or ["15"])[0])
+        except ValueError:
+            raise ApiError(400, "Choose a valid search distance")
+        if radius not in (5, 10, 15, 20, 25, 30, 40, 50):
+            raise ApiError(400, "Choose a search distance from 5 to 50 miles")
+        return lookup_golf_courses(postal_code, radius)
 
     def r_threads(self, conn, uid):
         hidden = blocked_ids(conn, uid)
@@ -878,17 +981,18 @@ class Handler(BaseHTTPRequestHandler):
         title = (b.get("title") or "").strip()
         course = (b.get("course") or "").strip()
         when = (b.get("when") or "").strip()
-        if not title or not course or not when:
-            raise ApiError(400, "Title, course, and date/time are required")
+        postal_code = (b.get("zipCode") or "").strip()
+        if not title or not course or not when or not re.match(r"^\d{5}$", postal_code):
+            raise ApiError(400, "Title, ZIP code, course, and date/time are required")
         try:
             spots = max(1, min(3, int(b.get("spots") or 1)))
         except (TypeError, ValueError):
             spots = 1
         tags = [str(t)[:20] for t in (b.get("tags") or [])][:4]
         conn.execute(
-            "INSERT INTO teetimes (host_id,icon,title,course,when_text,descr,spots,tags,created_at)"
-            " VALUES (?,?,?,?,?,?,?,?,?)",
-            (uid, (b.get("icon") or "⛳")[:4], title[:80], course[:80], when[:60],
+            "INSERT INTO teetimes (host_id,icon,title,course,when_text,postal_code,descr,spots,tags,created_at)"
+            " VALUES (?,?,?,?,?,?,?,?,?,?)",
+            (uid, (b.get("icon") or "⛳")[:4], title[:80], course[:80], when[:60], postal_code,
              (b.get("desc") or "").strip()[:500], spots, json.dumps(tags), time.time()))
         return {"ok": True}
 

@@ -150,6 +150,7 @@ function renderAuth() {
           <div class="field"><label>Password</label><input id="authPassword" type="password" placeholder="${isLogin ? "Your password" : "At least 8 characters"}" /></div>
           ${isLogin ? "" : `
             <div class="field"><label>Headline (optional)</label><input id="authHeadline" type="text" placeholder="Weekend Warrior · Chasing single digits" /></div>
+            <div class="field"><label>Home ZIP code</label><input id="authZip" inputmode="numeric" maxlength="5" pattern="[0-9]{5}" placeholder="75218" required /></div>
             <div class="field"><label>Home course (optional)</label><input id="authCourse" type="text" placeholder="Harding Park GC" /></div>
             <div class="field"><label>Handicap index (optional)</label><input id="authHandicap" type="number" step="0.1" placeholder="18.5" /></div>`}
           <div class="auth-error" id="authError"></div>
@@ -179,6 +180,7 @@ async function submitAuth(ev) {
   if (authMode === "signup") {
     payload.name = document.getElementById("authName").value;
     payload.headline = document.getElementById("authHeadline").value;
+    payload.zipCode = document.getElementById("authZip").value;
     payload.homeCourse = document.getElementById("authCourse").value;
     payload.handicap = document.getElementById("authHandicap").value;
   }
@@ -453,6 +455,26 @@ async function renderNetwork() {
 
 let teetimeFormOpen = false;
 
+function teeTimeOptions() {
+  const options = [];
+  for (let hour = 5; hour <= 20; hour++) {
+    for (const minute of [0, 15, 30, 45]) {
+      if (hour === 20 && minute > 0) continue;
+      const h = hour > 12 ? hour - 12 : hour;
+      const suffix = hour >= 12 ? "PM" : "AM";
+      const label = `${h}:${String(minute).padStart(2, "0")} ${suffix}`;
+      options.push(`<option value="${label}">${label}</option>`);
+    }
+  }
+  return options.join("");
+}
+
+function todayISO() {
+  const now = new Date();
+  const local = new Date(now.getTime() - now.getTimezoneOffset() * 60000);
+  return local.toISOString().slice(0, 10);
+}
+
 async function renderTeeTimes() {
   const data = await api("/teetimes");
   $app.innerHTML = `
@@ -466,7 +488,7 @@ async function renderTeeTimes() {
             <div class="teetime-logo">${esc(t.icon)}</div>
             <div class="person-grow">
               <div class="teetime-title">${esc(t.title)}</div>
-              <div class="teetime-meta">${esc(t.course)} · ${esc(t.when)}</div>
+              <div class="teetime-meta">${esc(t.course)} · ${esc(t.when)}${t.postalCode ? ` · ZIP ${esc(t.postalCode)}` : ""}</div>
               <div class="teetime-desc">${esc(t.desc)}</div>
               <div class="teetime-foot">
                 ${t.tags.map(tag => `<span class="pill">${esc(tag)}</span>`).join("")}
@@ -511,12 +533,40 @@ async function renderTeeTimes() {
           <h3 class="card-title">Host a tee time</h3>
           ${teetimeFormOpen ? `
             <form onsubmit="return createTeeTime(event)">
-              <div class="field"><label>Title</label><input id="ttTitle" placeholder="Saturday dawn patrol — need 2" /></div>
-              <div class="field"><label>Course</label><input id="ttCourse" placeholder="Harding Park GC" /></div>
-              <div class="field"><label>When</label><input id="ttWhen" placeholder="Sat Jun 20, 7:00 AM" /></div>
-              <div class="field"><label>Open spots (1–3)</label><input id="ttSpots" type="number" min="1" max="3" value="1" /></div>
+              <div class="field"><label>Title</label><input id="ttTitle" placeholder="Saturday dawn patrol — need 2" required /></div>
+              <div class="field">
+                <label>ZIP code</label>
+                <div class="course-lookup-row">
+                  <input id="ttZip" inputmode="numeric" maxlength="5" pattern="[0-9]{5}" value="${esc(data.myZip || "")}" placeholder="75218" required />
+                  <select id="ttRadius" aria-label="Search distance">
+                    <option value="5">5 miles</option>
+                    <option value="10">10 miles</option>
+                    <option value="15" selected>15 miles</option>
+                    <option value="20">20 miles</option>
+                    <option value="25">25 miles</option>
+                    <option value="30">30 miles</option>
+                    <option value="40">40 miles</option>
+                    <option value="50">50 miles</option>
+                  </select>
+                  <button id="ttFindCourses" class="btn btn-outline btn-sm" type="button" onclick="loadNearbyCourses()">Find courses</button>
+                </div>
+                <div id="ttCourseStatus" class="field-help">Enter a ZIP code to find nearby golf courses.</div>
+              </div>
+              <div class="field"><label>Course</label>
+                <select id="ttCourse" onchange="toggleOtherCourse()" disabled required>
+                  <option value="">Find courses first</option>
+                </select>
+                <input id="ttCourseOther" class="hidden" style="margin-top:8px" placeholder="Enter the course name" />
+              </div>
+              <div class="form-grid">
+                <div class="field"><label>Date</label><input id="ttDate" type="date" min="${todayISO()}" required /></div>
+                <div class="field"><label>Time</label><select id="ttTime" required><option value="">Choose time</option>${teeTimeOptions()}</select></div>
+              </div>
+              <div class="form-grid">
+                <div class="field"><label>Open spots</label><select id="ttSpots"><option value="1">1 golfer</option><option value="2">2 golfers</option><option value="3">3 golfers</option></select></div>
+                <div class="field"><label>Round style</label><select id="ttTags"><option value="Casual">Casual</option><option value="Competitive">Competitive</option><option value="Walking">Walking</option><option value="Riding">Riding</option><option value="All levels">All levels</option><option value="Beginner friendly">Beginner friendly</option></select></div>
+              </div>
               <div class="field"><label>Details</label><input id="ttDesc" placeholder="Walking, all levels welcome" /></div>
-              <div class="field"><label>Tags (comma separated)</label><input id="ttTags" placeholder="Casual, Walking" /></div>
               <button class="btn btn-primary btn-block" type="submit">Post tee time</button>
             </form>`
           : `<div class="person-sub" style="margin-bottom:10px">Need players? Post an open spot and let the network fill your cart.</div>
@@ -524,6 +574,48 @@ async function renderTeeTimes() {
         </div>
       </div>
     </div>`;
+}
+
+async function loadNearbyCourses() {
+  const zip = document.getElementById("ttZip").value.trim();
+  const radius = document.getElementById("ttRadius").value;
+  const status = document.getElementById("ttCourseStatus");
+  const select = document.getElementById("ttCourse");
+  const button = document.getElementById("ttFindCourses");
+  if (!/^\d{5}$/.test(zip)) {
+    status.textContent = "Enter a valid 5-digit ZIP code.";
+    return;
+  }
+  button.disabled = true;
+  button.textContent = "Searching…";
+  status.textContent = "Looking for nearby golf courses…";
+  try {
+    const data = await api(`/courses?zip=${encodeURIComponent(zip)}&radius=${radius}`);
+    select.innerHTML = `<option value="">Choose a nearby course</option>` +
+      data.courses.map(c => `<option value="${esc(c.name)}">${esc(c.name)} — ${c.distanceMiles} mi</option>`).join("") +
+      `<option value="__other__">Other course…</option>`;
+    select.disabled = false;
+    status.textContent = data.courses.length
+      ? `${data.courses.length} courses found within ${data.radiusMiles} miles of ${data.location}.`
+      : `No mapped courses found within ${data.radiusMiles} miles of ${data.location}; choose Other course.`;
+  } catch (e) {
+    select.innerHTML = `<option value="__other__">Other course…</option>`;
+    select.disabled = false;
+    select.value = "__other__";
+    toggleOtherCourse();
+    status.textContent = e.message;
+  } finally {
+    button.disabled = false;
+    button.textContent = "Find courses";
+  }
+}
+
+function toggleOtherCourse() {
+  const other = document.getElementById("ttCourseOther");
+  if (!other) return;
+  const show = document.getElementById("ttCourse").value === "__other__";
+  other.classList.toggle("hidden", !show);
+  other.required = show;
 }
 
 async function reviewTeeTimeRequest(teetimeId, userId, action) {
@@ -536,13 +628,18 @@ async function reviewTeeTimeRequest(teetimeId, userId, action) {
 
 async function createTeeTime(ev) {
   ev.preventDefault();
+  const courseSelect = document.getElementById("ttCourse");
+  const course = courseSelect.value === "__other__"
+    ? document.getElementById("ttCourseOther").value.trim()
+    : courseSelect.value;
   const body = {
     title: document.getElementById("ttTitle").value,
-    course: document.getElementById("ttCourse").value,
-    when: document.getElementById("ttWhen").value,
+    zipCode: document.getElementById("ttZip").value,
+    course,
+    when: `${document.getElementById("ttDate").value} at ${document.getElementById("ttTime").value}`,
     spots: document.getElementById("ttSpots").value,
     desc: document.getElementById("ttDesc").value,
-    tags: document.getElementById("ttTags").value.split(",").map(s => s.trim()).filter(Boolean),
+    tags: [document.getElementById("ttTags").value],
   };
   teetimeFormOpen = false;
   await act(api("/teetimes", "POST", body), "Tee time posted ⛳");

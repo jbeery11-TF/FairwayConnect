@@ -63,6 +63,7 @@ class TeeTimeRequestFlowTest(unittest.TestCase):
             "title": "Pilot test round",
             "course": "Test course",
             "when": "Saturday 10 AM",
+            "zipCode": "75218",
             "spots": 1,
         })
         listings = self.request("GET", "/teetimes", host["token"])["teetimes"]
@@ -109,6 +110,24 @@ class TeeTimeRequestFlowTest(unittest.TestCase):
             "GET", "/notifications", declined["token"])["notifications"]
         self.assertTrue(any("confirmed" in n["text"] for n in accepted_notifications))
         self.assertTrue(any("declined" in n["text"] for n in declined_notifications))
+
+    def test_zip_course_lookup_endpoint(self):
+        golfer = self.signup("ZIP Golfer", "zip@example.com")
+        original = server.lookup_golf_courses
+        server.lookup_golf_courses = lambda postal_code, radius: {
+            "zipCode": postal_code,
+            "radiusMiles": radius,
+            "location": "Dallas, TX",
+            "courses": [{"name": "Tenison Park", "distanceMiles": 2.4,
+                         "city": "Dallas", "state": "TX"}],
+        }
+        try:
+            result = self.request("GET", "/courses?zip=75218&radius=10", golfer["token"])
+        finally:
+            server.lookup_golf_courses = original
+        self.assertEqual("75218", result["zipCode"])
+        self.assertEqual(10, result["radiusMiles"])
+        self.assertEqual("Tenison Park", result["courses"][0]["name"])
 
 
 if __name__ == "__main__":

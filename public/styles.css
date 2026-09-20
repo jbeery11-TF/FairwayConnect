@@ -330,11 +330,21 @@ body.noauth .authed-only { display: none !important; }
 .tee-requests-title { font-weight: 700; font-size: 13px; margin-bottom: 6px; }
 .tee-request-row { display: flex; align-items: center; gap: 10px; padding: 7px 0; }
 .tee-request-actions { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+.course-lookup-row { display: flex; gap: 8px; }
+.course-lookup-row input { flex: 1; }
+.course-lookup-row select { width: auto; min-width: 105px; }
+.course-lookup-row button { white-space: nowrap; }
+.field-help { color: var(--muted); font-size: 12px; margin-top: 6px; }
+.form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 
 @media (max-width: 640px) {
   .teetime { flex-wrap: wrap; }
   .teetime > .person-grow { min-width: calc(100% - 70px); }
   .tee-request-row { align-items: flex-start; }
+  .form-grid { grid-template-columns: 1fr; gap: 0; }
+  .course-lookup-row { align-items: stretch; }
+  .course-lookup-row { flex-wrap: wrap; }
+  .course-lookup-row input { min-width: 130px; }
 }
 
 /* ---------- Messaging ---------- */
