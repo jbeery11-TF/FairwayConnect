@@ -589,25 +589,45 @@ async function loadNearbyCourses() {
   button.disabled = true;
   button.textContent = "Searching…";
   status.textContent = "Looking for nearby golf courses…";
+  const cacheKey = `fc-course-cache-${zip}-${radius}`;
+  let cached = null;
+  try {
+    cached = JSON.parse(localStorage.getItem(cacheKey));
+  } catch (e) { /* ignore invalid cache */ }
+  if (cached && Date.now() - cached.savedAt < 86400000) {
+    showCourseChoices(cached.data, select, status, true);
+    button.disabled = false;
+    button.textContent = "Refresh courses";
+    return;
+  }
   try {
     const data = await api(`/courses?zip=${encodeURIComponent(zip)}&radius=${radius}`);
-    select.innerHTML = `<option value="">Choose a nearby course</option>` +
-      data.courses.map(c => `<option value="${esc(c.name)}">${esc(c.name)} — ${c.distanceMiles} mi</option>`).join("") +
-      `<option value="__other__">Other course…</option>`;
-    select.disabled = false;
-    status.textContent = data.courses.length
-      ? `${data.courses.length} courses found within ${data.radiusMiles} miles of ${data.location}.`
-      : `No mapped courses found within ${data.radiusMiles} miles of ${data.location}; choose Other course.`;
+    localStorage.setItem(cacheKey, JSON.stringify({savedAt: Date.now(), data}));
+    showCourseChoices(data, select, status, false);
   } catch (e) {
-    select.innerHTML = `<option value="__other__">Other course…</option>`;
-    select.disabled = false;
-    select.value = "__other__";
-    toggleOtherCourse();
-    status.textContent = e.message;
+    if (cached && cached.data) {
+      showCourseChoices(cached.data, select, status, true);
+    } else {
+      select.innerHTML = `<option value="__other__">Other course…</option>`;
+      select.disabled = false;
+      select.value = "__other__";
+      toggleOtherCourse();
+      status.textContent = `${e.message}. You can enter the course manually below.`;
+    }
   } finally {
     button.disabled = false;
     button.textContent = "Find courses";
   }
+}
+
+function showCourseChoices(data, select, status, fromCache) {
+  select.innerHTML = `<option value="">Choose a nearby course</option>` +
+    data.courses.map(c => `<option value="${esc(c.name)}">${esc(c.name)} — ${c.distanceMiles} mi</option>`).join("") +
+    `<option value="__other__">Other course…</option>`;
+  select.disabled = false;
+  status.textContent = data.courses.length
+    ? `${data.courses.length} courses found within ${data.radiusMiles} miles of ${data.location}.${fromCache ? " Using saved results." : ""}`
+    : `No mapped courses found within ${data.radiusMiles} miles of ${data.location}; choose Other course.`;
 }
 
 function toggleOtherCourse() {

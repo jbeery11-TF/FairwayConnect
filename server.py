@@ -372,9 +372,18 @@ def lookup_golf_courses(postal_code, radius_miles=15):
         f'[out:json][timeout:20];('
         f'nwr["leisure"="golf_course"](around:{radius_meters},{lat},{lon});'
         f');out center tags;')
-    osm = fetch_json(
-        "https://overpass-api.de/api/interpreter",
-        urlencode({"data": query}).encode(), timeout=25)
+    osm = None
+    for endpoint in (
+            "https://overpass-api.de/api/interpreter",
+            "https://overpass.kumi.systems/api/interpreter",
+            "https://overpass.nchc.org.tw/api/interpreter"):
+        try:
+            osm = fetch_json(endpoint, urlencode({"data": query}).encode(), timeout=25)
+            break
+        except ApiError:
+            continue
+    if osm is None:
+        raise ApiError(502, "Course lookup is temporarily unavailable — try again shortly")
     courses = []
     seen = set()
     for element in osm.get("elements", []):
