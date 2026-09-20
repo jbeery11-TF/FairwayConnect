@@ -473,12 +473,32 @@ async function renderTeeTimes() {
                 <span class="pill pill-gold">${t.spotsLeft} spot${t.spotsLeft === 1 ? "" : "s"} open</span>
                 <span>Hosted by <a href="#/profile/${t.host.id}" style="color:var(--green);font-weight:600">${esc(t.host.name)}</a></span>
               </div>
+              ${t.mine && t.requests.length ? `
+                <div class="tee-requests">
+                  <div class="tee-requests-title">Player requests</div>
+                  ${t.requests.map(u => `
+                    <div class="tee-request-row">
+                      ${avatar(u, "sm")}
+                      <div class="person-grow">
+                        <div class="person-name" onclick="go('profile/${u.id}')">${esc(u.name)}</div>
+                        <div class="person-sub">${u.status === "accepted" ? "Spot confirmed" : "Waiting for your response"}</div>
+                      </div>
+                      ${u.status === "accepted"
+                        ? `<span class="pill">Accepted ✓</span>`
+                        : `<div class="tee-request-actions">
+                            <button class="btn btn-primary btn-sm" onclick="reviewTeeTimeRequest(${t.id}, ${u.id}, 'accept')">Accept</button>
+                            <button class="btn btn-ghost btn-sm" onclick="reviewTeeTimeRequest(${t.id}, ${u.id}, 'decline')">Decline</button>
+                          </div>`}
+                    </div>`).join("")}
+                </div>` : ""}
             </div>
             <div>
               ${t.mine
                 ? `<button class="btn btn-ghost btn-sm" disabled>Your listing</button>`
-                : t.requested
+                : t.requestStatus === "pending"
                   ? `<button class="btn btn-ghost btn-sm" disabled>Requested ✓</button>`
+                  : t.requestStatus === "accepted"
+                    ? `<button class="btn btn-ghost btn-sm" disabled>Spot confirmed ✓</button>`
                   : t.spotsLeft === 0
                     ? `<button class="btn btn-ghost btn-sm" disabled>Full</button>`
                     : `<button class="btn btn-primary btn-sm" onclick="act(api('/teetimes/${t.id}/join', 'POST'), 'Request sent — keep your spikes ready 👟')">Request spot</button>`}
@@ -504,6 +524,14 @@ async function renderTeeTimes() {
         </div>
       </div>
     </div>`;
+}
+
+async function reviewTeeTimeRequest(teetimeId, userId, action) {
+  const verb = action === "accept" ? "accepted" : "declined";
+  await act(
+    api(`/teetimes/${teetimeId}/requests/${userId}/${action}`, "POST"),
+    `Player ${verb}`,
+  );
 }
 
 async function createTeeTime(ev) {

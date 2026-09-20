@@ -105,6 +105,7 @@ CREATE TABLE IF NOT EXISTS teetimes (
 );
 CREATE TABLE IF NOT EXISTS teetime_requests (
   teetime_id INTEGER NOT NULL REFERENCES teetimes(id), user_id INTEGER NOT NULL REFERENCES users(id),
+  status TEXT NOT NULL DEFAULT 'pending',
   UNIQUE(teetime_id, user_id)
 );
 CREATE TABLE IF NOT EXISTS messages (
@@ -293,6 +294,11 @@ def init_db():
     fresh = not os.path.exists(DB_PATH)
     conn = db()
     conn.executescript(SCHEMA)
+    # Upgrade databases created before hosts could accept or decline tee-time requests.
+    request_columns = {r["name"] for r in conn.execute("PRAGMA table_info(teetime_requests)")}
+    if "status" not in request_columns:
+        conn.execute(
+            "ALTER TABLE teetime_requests ADD COLUMN status TEXT NOT NULL DEFAULT 'pending'")
     if fresh or conn.execute("SELECT COUNT(*) c FROM users").fetchone()["c"] == 0:
         seed(conn)
     conn.commit()
@@ -506,6 +512,11 @@ class Handler(BaseHTTPRequestHandler):
                 return self.r_create_teetime(conn, uid)
             if len(p) == 3 and p[0] == "teetimes" and p[2] == "join":
                 return self.r_join_teetime(conn, uid, int(p[1]))
+            if len(p) == 5 and p[0] == "teetimes" and p[2] == "requests":
+                if p[4] not in ("accept", "decline"):
+                    raise ApiError(404, "Unknown endpoint")
+                return self.r_review_teetime_request(
+                    conn, uid, int(p[1]), int(p[3]), p[4])
             if len(p) == 2 and p[0] == "threads":
                 return self.r_send_message(conn, uid, int(p[1]))
 
@@ -688,17 +699,30 @@ class Handler(BaseHTTPRequestHandler):
                 "JOIN users ON users.id = teetimes.host_id ORDER BY teetimes.created_at DESC"):
             if t["host_id"] in hidden:
                 continue
-            taken = conn.execute("SELECT COUNT(*) c FROM teetime_requests WHERE teetime_id=?",
-                                 (t["id"],)).fetchone()["c"]
-            requested = conn.execute(
-                "SELECT 1 FROM teetime_requests WHERE teetime_id=? AND user_id=?",
-                (t["id"], uid)).fetchone() is not None
+            taken = conn.execute(
+                "SELECT COUNT(*) c FROM teetime_requests WHERE teetime_id=? AND status='accepted'",
+                (t["id"],)).fetchone()["c"]
+            request = conn.execute(
+                "SELECT status FROM teetime_requests WHERE teetime_id=? AND user_id=?",
+                (t["id"], uid)).fetchone()
+            requests = []
+            if t["host_id"] == uid:
+                for r in conn.execute(
+                        "SELECT tr.status, users.id, users.name, users.color, users.headline, "
+                        "users.home_course, users.handicap FROM teetime_requests tr "
+                        "JOIN users ON users.id=tr.user_id "
+                        "WHERE tr.teetime_id=? AND tr.status IN ('pending','accepted') "
+                        "ORDER BY CASE tr.status WHEN 'pending' THEN 0 ELSE 1 END, users.name",
+                        (t["id"],)):
+                    requests.append({**user_brief(r), "status": r["status"]})
             out.append({
                 "id": t["id"], "icon": t["icon"], "title": t["title"], "course": t["course"],
                 "when": t["when_text"], "desc": t["descr"], "tags": json.loads(t["tags"]),
                 "spotsLeft": max(0, t["spots"] - taken),
                 "host": {"id": t["host_id"], "name": t["host_name"]},
-                "mine": t["host_id"] == uid, "requested": requested,
+                "mine": t["host_id"] == uid,
+                "requestStatus": request["status"] if request else None,
+                "requests": requests,
             })
         return {"teetimes": out}
 
@@ -874,16 +898,57 @@ class Handler(BaseHTTPRequestHandler):
             raise ApiError(404, "Tee time not found")
         if t["host_id"] == uid:
             raise ApiError(400, "That's your own listing")
-        taken = conn.execute("SELECT COUNT(*) c FROM teetime_requests WHERE teetime_id=?",
-                             (tid,)).fetchone()["c"]
+        existing = conn.execute(
+            "SELECT status FROM teetime_requests WHERE teetime_id=? AND user_id=?",
+            (tid, uid)).fetchone()
+        if existing and existing["status"] == "accepted":
+            raise ApiError(409, "Your spot is already confirmed")
+        if existing and existing["status"] == "pending":
+            return {"status": "pending"}
+        taken = conn.execute(
+            "SELECT COUNT(*) c FROM teetime_requests WHERE teetime_id=? AND status='accepted'",
+            (tid,)).fetchone()["c"]
         if taken >= t["spots"]:
             raise ApiError(409, "This tee time is full")
-        conn.execute("INSERT OR IGNORE INTO teetime_requests (teetime_id,user_id) VALUES (?,?)",
-                     (tid, uid))
+        conn.execute(
+            "INSERT INTO teetime_requests (teetime_id,user_id,status) VALUES (?,?,'pending') "
+            "ON CONFLICT(teetime_id,user_id) DO UPDATE SET status='pending'",
+            (tid, uid))
         me = get_user(conn, uid)
         notify(conn, t["host_id"], "📋",
                f"{me['name']} requested a spot in \"{t['title']}\".", "#/teetimes")
         return {"ok": True}
+
+    def r_review_teetime_request(self, conn, uid, tid, requester, action):
+        t = conn.execute("SELECT * FROM teetimes WHERE id=?", (tid,)).fetchone()
+        if not t:
+            raise ApiError(404, "Tee time not found")
+        if t["host_id"] != uid:
+            raise ApiError(403, "Only the host can review requests")
+        req = conn.execute(
+            "SELECT status FROM teetime_requests WHERE teetime_id=? AND user_id=?",
+            (tid, requester)).fetchone()
+        if not req or req["status"] != "pending":
+            raise ApiError(404, "Pending request not found")
+        golfer = get_user(conn, requester)
+        if action == "accept":
+            taken = conn.execute(
+                "SELECT COUNT(*) c FROM teetime_requests "
+                "WHERE teetime_id=? AND status='accepted'", (tid,)).fetchone()["c"]
+            if taken >= t["spots"]:
+                raise ApiError(409, "This tee time is already full")
+            conn.execute(
+                "UPDATE teetime_requests SET status='accepted' "
+                "WHERE teetime_id=? AND user_id=?", (tid, requester))
+            notify(conn, requester, "✅",
+                   f"Your spot in \"{t['title']}\" was confirmed.", "#/teetimes")
+            return {"status": "accepted", "golfer": golfer["name"]}
+        conn.execute(
+            "UPDATE teetime_requests SET status='declined' "
+            "WHERE teetime_id=? AND user_id=?", (tid, requester))
+        notify(conn, requester, "📋",
+               f"Your request for \"{t['title']}\" was declined.", "#/teetimes")
+        return {"status": "declined", "golfer": golfer["name"]}
 
     def r_send_message(self, conn, uid, other):
         b = self.read_body()

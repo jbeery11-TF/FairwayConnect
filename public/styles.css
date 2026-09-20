@@ -326,6 +326,16 @@ body.noauth .authed-only { display: none !important; }
 .teetime-foot { margin-top: 8px; display: flex; align-items: center; gap: 12px; font-size: 12px; color: var(--muted); flex-wrap: wrap; }
 .pill { background: var(--green-light); color: var(--green); font-weight: 600; padding: 2px 10px; border-radius: 10px; font-size: 12px; }
 .pill-gold { background: #f7efd8; color: var(--gold); }
+.tee-requests { margin-top: 14px; border-top: 1px solid var(--line); padding-top: 10px; }
+.tee-requests-title { font-weight: 700; font-size: 13px; margin-bottom: 6px; }
+.tee-request-row { display: flex; align-items: center; gap: 10px; padding: 7px 0; }
+.tee-request-actions { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+
+@media (max-width: 640px) {
+  .teetime { flex-wrap: wrap; }
+  .teetime > .person-grow { min-width: calc(100% - 70px); }
+  .tee-request-row { align-items: flex-start; }
+}
 
 /* ---------- Messaging ---------- */
 .msg-layout { display: grid; grid-template-columns: 320px 1fr; min-height: 480px; }
