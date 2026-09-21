@@ -412,7 +412,7 @@ body.noauth .authed-only { display: none !important; }
 .profile-banner { height: 140px; background: var(--fc-green-deep); position: relative; }
 .profile-banner::after { content: ""; position: absolute; right: 28px; bottom: 18px; width: 42px; height: 42px; background: url("logo-reverse.svg") center/contain no-repeat; opacity: .6; }
 .profile-head { padding: 0 24px 20px; }
-.profile-head .avatar-xl { margin-top: -60px; }
+.profile-head .avatar-xl { margin-top: -60px; position: relative; z-index: 2; }
 .profile-name { font-size: 24px; font-weight: 800; margin: 10px 0 2px; }
 .profile-headline { font-size: 15px; color: var(--text); }
 .profile-loc { font-size: 13px; color: var(--muted); margin-top: 2px; }
