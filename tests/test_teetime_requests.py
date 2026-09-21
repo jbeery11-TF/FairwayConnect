@@ -111,6 +111,23 @@ class TeeTimeRequestFlowTest(unittest.TestCase):
         self.assertTrue(any("confirmed" in n["text"] for n in accepted_notifications))
         self.assertTrue(any("declined" in n["text"] for n in declined_notifications))
 
+        # Hosts get their own listings automatically; accepted golfers choose whether to add it.
+        host_calendar = self.request("GET", "/calendar", host["token"])["events"]
+        accepted_calendar = self.request("GET", "/calendar", accepted["token"])["events"]
+        self.assertTrue(any(e["id"] == tee_id for e in host_calendar))
+        self.assertFalse(any(e["id"] == tee_id for e in accepted_calendar))
+
+        self.request("POST", f"/teetimes/{tee_id}/calendar", accepted["token"])
+        accepted_calendar = self.request("GET", "/calendar", accepted["token"])["events"]
+        self.assertTrue(any(e["id"] == tee_id for e in accepted_calendar))
+
+        self.request("DELETE", f"/teetimes/{tee_id}/calendar", accepted["token"])
+        accepted_calendar = self.request("GET", "/calendar", accepted["token"])["events"]
+        self.assertFalse(any(e["id"] == tee_id for e in accepted_calendar))
+
+        self.request(
+            "POST", f"/teetimes/{tee_id}/calendar", declined["token"], expected=403)
+
     def test_zip_course_lookup_endpoint(self):
         golfer = self.signup("ZIP Golfer", "zip@example.com")
         original = server.lookup_golf_courses

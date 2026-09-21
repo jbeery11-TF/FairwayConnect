@@ -113,6 +113,12 @@ CREATE TABLE IF NOT EXISTS teetime_requests (
   status TEXT NOT NULL DEFAULT 'pending',
   UNIQUE(teetime_id, user_id)
 );
+CREATE TABLE IF NOT EXISTS calendar_entries (
+  user_id INTEGER NOT NULL REFERENCES users(id),
+  teetime_id INTEGER NOT NULL REFERENCES teetimes(id),
+  created_at REAL NOT NULL,
+  UNIQUE(user_id, teetime_id)
+);
 CREATE TABLE IF NOT EXISTS messages (
   id INTEGER PRIMARY KEY, from_id INTEGER NOT NULL REFERENCES users(id),
   to_id INTEGER NOT NULL REFERENCES users(id), text TEXT NOT NULL,
@@ -572,6 +578,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self.r_network(conn, uid)
             if p == ["teetimes"]:
                 return self.r_teetimes(conn, uid)
+            if p == ["calendar"]:
+                return self.r_calendar(conn, uid)
             if p == ["courses"]:
                 return self.r_courses(query)
             if p == ["threads"]:
@@ -607,6 +615,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self.r_create_teetime(conn, uid)
             if len(p) == 3 and p[0] == "teetimes" and p[2] == "join":
                 return self.r_join_teetime(conn, uid, int(p[1]))
+            if len(p) == 3 and p[0] == "teetimes" and p[2] == "calendar":
+                return self.r_add_to_calendar(conn, uid, int(p[1]))
             if len(p) == 5 and p[0] == "teetimes" and p[2] == "requests":
                 if p[4] not in ("accept", "decline"):
                     raise ApiError(404, "Unknown endpoint")
@@ -615,17 +625,20 @@ class Handler(BaseHTTPRequestHandler):
             if len(p) == 2 and p[0] == "threads":
                 return self.r_send_message(conn, uid, int(p[1]))
 
-        if method == "DELETE" and len(p) == 2 and p[0] == "posts":
-            pid = int(p[1])
-            row = conn.execute("SELECT user_id FROM posts WHERE id=?", (pid,)).fetchone()
-            if not row:
-                raise ApiError(404, "Post not found")
-            if row["user_id"] != uid:
-                raise ApiError(403, "You can only delete your own posts")
-            for table in ("likes", "comments", "reports"):
-                conn.execute(f"DELETE FROM {table} WHERE post_id=?", (pid,))
-            conn.execute("DELETE FROM posts WHERE id=?", (pid,))
-            return {"ok": True}
+        if method == "DELETE":
+            if len(p) == 2 and p[0] == "posts":
+                pid = int(p[1])
+                row = conn.execute("SELECT user_id FROM posts WHERE id=?", (pid,)).fetchone()
+                if not row:
+                    raise ApiError(404, "Post not found")
+                if row["user_id"] != uid:
+                    raise ApiError(403, "You can only delete your own posts")
+                for table in ("likes", "comments", "reports"):
+                    conn.execute(f"DELETE FROM {table} WHERE post_id=?", (pid,))
+                conn.execute("DELETE FROM posts WHERE id=?", (pid,))
+                return {"ok": True}
+            if len(p) == 3 and p[0] == "teetimes" and p[2] == "calendar":
+                return self.r_remove_from_calendar(conn, uid, int(p[1]))
 
         raise ApiError(404, "Unknown endpoint")
 
@@ -803,6 +816,9 @@ class Handler(BaseHTTPRequestHandler):
             request = conn.execute(
                 "SELECT status FROM teetime_requests WHERE teetime_id=? AND user_id=?",
                 (t["id"], uid)).fetchone()
+            calendar_added = conn.execute(
+                "SELECT 1 FROM calendar_entries WHERE user_id=? AND teetime_id=?",
+                (uid, t["id"])).fetchone() is not None
             requests = []
             if t["host_id"] == uid:
                 for r in conn.execute(
@@ -822,9 +838,23 @@ class Handler(BaseHTTPRequestHandler):
                 "host": {"id": t["host_id"], "name": t["host_name"]},
                 "mine": t["host_id"] == uid,
                 "requestStatus": request["status"] if request else None,
+                "calendarAdded": calendar_added,
                 "requests": requests,
             })
         return {"teetimes": out, "myZip": get_user(conn, uid)["postal_code"]}
+
+    def r_calendar(self, conn, uid):
+        rows = conn.execute(
+            "SELECT t.*, u.name AS host_name FROM calendar_entries ce "
+            "JOIN teetimes t ON t.id=ce.teetime_id "
+            "JOIN users u ON u.id=t.host_id "
+            "WHERE ce.user_id=? ORDER BY t.when_text, t.created_at", (uid,)).fetchall()
+        return {"events": [{
+            "id": t["id"], "icon": t["icon"], "title": t["title"],
+            "course": t["course"], "when": t["when_text"],
+            "postalCode": t["postal_code"], "hostName": t["host_name"],
+            "mine": t["host_id"] == uid,
+        } for t in rows]}
 
     def r_courses(self, query):
         postal_code = (query.get("zip") or [""])[0].strip()
@@ -998,12 +1028,15 @@ class Handler(BaseHTTPRequestHandler):
         except (TypeError, ValueError):
             spots = 1
         tags = [str(t)[:20] for t in (b.get("tags") or [])][:4]
-        conn.execute(
+        cur = conn.execute(
             "INSERT INTO teetimes (host_id,icon,title,course,when_text,postal_code,descr,spots,tags,created_at)"
             " VALUES (?,?,?,?,?,?,?,?,?,?)",
             (uid, (b.get("icon") or "⛳")[:4], title[:80], course[:80], when[:60], postal_code,
              (b.get("desc") or "").strip()[:500], spots, json.dumps(tags), time.time()))
-        return {"ok": True}
+        conn.execute(
+            "INSERT INTO calendar_entries (user_id,teetime_id,created_at) VALUES (?,?,?)",
+            (uid, cur.lastrowid, time.time()))
+        return {"ok": True, "teetimeId": cur.lastrowid}
 
     def r_join_teetime(self, conn, uid, tid):
         t = conn.execute("SELECT * FROM teetimes WHERE id=?", (tid,)).fetchone()
@@ -1062,6 +1095,25 @@ class Handler(BaseHTTPRequestHandler):
         notify(conn, requester, "📋",
                f"Your request for \"{t['title']}\" was declined.", "#/teetimes")
         return {"status": "declined", "golfer": golfer["name"]}
+
+    def r_add_to_calendar(self, conn, uid, tid):
+        t = conn.execute("SELECT * FROM teetimes WHERE id=?", (tid,)).fetchone()
+        if not t:
+            raise ApiError(404, "Tee time not found")
+        accepted = conn.execute(
+            "SELECT 1 FROM teetime_requests WHERE teetime_id=? AND user_id=? AND status='accepted'",
+            (tid, uid)).fetchone()
+        if t["host_id"] != uid and not accepted:
+            raise ApiError(403, "Only confirmed golfers can add this tee time")
+        conn.execute(
+            "INSERT OR IGNORE INTO calendar_entries (user_id,teetime_id,created_at) VALUES (?,?,?)",
+            (uid, tid, time.time()))
+        return {"ok": True, "status": "added"}
+
+    def r_remove_from_calendar(self, conn, uid, tid):
+        conn.execute(
+            "DELETE FROM calendar_entries WHERE user_id=? AND teetime_id=?", (uid, tid))
+        return {"ok": True, "status": "removed"}
 
     def r_send_message(self, conn, uid, other):
         b = self.read_body()

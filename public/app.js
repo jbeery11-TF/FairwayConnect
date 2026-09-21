@@ -477,7 +477,18 @@ function todayISO() {
 
 async function renderTeeTimes() {
   const data = await api("/teetimes");
+  const calendarPrompt = data.teetimes.find(t =>
+    !t.mine && t.requestStatus === "accepted" && !t.calendarAdded);
   $app.innerHTML = `
+    ${calendarPrompt ? `
+      <div class="calendar-prompt">
+        <div><b>Your spot is confirmed for ${esc(calendarPrompt.title)}.</b><br>
+          <span>Add this round to your FairwayConnect calendar?</span></div>
+        <div class="calendar-prompt-actions">
+          <button class="btn btn-ghost btn-sm" onclick="this.closest('.calendar-prompt').remove()">Not now</button>
+          <button class="btn btn-primary btn-sm" onclick="addToCalendar(${calendarPrompt.id})">Add to calendar</button>
+        </div>
+      </div>` : ""}
     <div class="layout-2col">
       <div class="card">
         <div class="card-pad" style="padding-bottom:0">
@@ -520,7 +531,9 @@ async function renderTeeTimes() {
                 : t.requestStatus === "pending"
                   ? `<button class="btn btn-ghost btn-sm" disabled>Requested ✓</button>`
                   : t.requestStatus === "accepted"
-                    ? `<button class="btn btn-ghost btn-sm" disabled>Spot confirmed ✓</button>`
+                    ? t.calendarAdded
+                      ? `<button class="btn btn-ghost btn-sm" onclick="go('calendar')">On calendar ✓</button>`
+                      : `<button class="btn btn-outline btn-sm" onclick="addToCalendar(${t.id})">＋ Add to calendar</button>`
                   : t.spotsLeft === 0
                     ? `<button class="btn btn-ghost btn-sm" disabled>Full</button>`
                     : `<button class="btn btn-primary btn-sm" onclick="act(api('/teetimes/${t.id}/join', 'POST'), 'Request sent — keep your spikes ready 👟')">Request spot</button>`}
@@ -646,6 +659,10 @@ async function reviewTeeTimeRequest(teetimeId, userId, action) {
   );
 }
 
+async function addToCalendar(teetimeId) {
+  await act(api(`/teetimes/${teetimeId}/calendar`, "POST"), "Added to your FairwayConnect calendar 📅");
+}
+
 async function createTeeTime(ev) {
   ev.preventDefault();
   const courseSelect = document.getElementById("ttCourse");
@@ -664,6 +681,91 @@ async function createTeeTime(ev) {
   teetimeFormOpen = false;
   await act(api("/teetimes", "POST", body), "Tee time posted ⛳");
   return false;
+}
+
+// ---------- Calendar ----------
+
+let calendarCursor = new Date();
+calendarCursor = new Date(calendarCursor.getFullYear(), calendarCursor.getMonth(), 1);
+
+function calendarDateKey(whenText) {
+  const match = /^(\d{4}-\d{2}-\d{2})\s+at\s+(.+)$/.exec(whenText || "");
+  return match ? match[1] : null;
+}
+
+function calendarTime(whenText) {
+  const match = /^\d{4}-\d{2}-\d{2}\s+at\s+(.+)$/.exec(whenText || "");
+  return match ? match[1] : whenText;
+}
+
+function moveCalendarMonth(amount) {
+  calendarCursor = new Date(calendarCursor.getFullYear(), calendarCursor.getMonth() + amount, 1);
+  renderCalendar();
+}
+
+async function removeFromCalendar(teetimeId) {
+  if (!confirm("Remove this tee time from your FairwayConnect calendar?")) return;
+  await act(api(`/teetimes/${teetimeId}/calendar`, "DELETE"), "Removed from calendar");
+}
+
+async function renderCalendar() {
+  const data = await api("/calendar");
+  const year = calendarCursor.getFullYear();
+  const month = calendarCursor.getMonth();
+  const monthLabel = calendarCursor.toLocaleDateString(undefined, {month: "long", year: "numeric"});
+  const firstWeekday = new Date(year, month, 1).getDay();
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const eventsByDay = {};
+  data.events.forEach(event => {
+    const key = calendarDateKey(event.when);
+    if (key) (eventsByDay[key] ||= []).push(event);
+  });
+  const cells = [];
+  for (let i = 0; i < firstWeekday; i++) cells.push(`<div class="calendar-day calendar-day-empty"></div>`);
+  for (let day = 1; day <= daysInMonth; day++) {
+    const key = `${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+    const events = eventsByDay[key] || [];
+    const today = key === todayISO();
+    cells.push(`
+      <div class="calendar-day ${today ? "calendar-today" : ""}">
+        <div class="calendar-day-number">${day}</div>
+        ${events.map(event => `
+          <button class="calendar-event" onclick="go('teetimes')" title="${esc(event.course)} · ${esc(calendarTime(event.when))}">
+            ${esc(event.icon)} ${esc(calendarTime(event.when))}<br><b>${esc(event.title)}</b>
+          </button>`).join("")}
+      </div>`);
+  }
+  while (cells.length % 7) cells.push(`<div class="calendar-day calendar-day-empty"></div>`);
+
+  $app.innerHTML = `
+    <div class="card calendar-card">
+      <div class="calendar-head">
+        <div>
+          <h2>My golf calendar</h2>
+          <div class="person-sub">Rounds you host and tee times you choose to add.</div>
+        </div>
+        <div class="calendar-month-controls">
+          <button class="btn btn-ghost btn-sm" onclick="moveCalendarMonth(-1)" aria-label="Previous month">‹</button>
+          <b>${esc(monthLabel)}</b>
+          <button class="btn btn-ghost btn-sm" onclick="moveCalendarMonth(1)" aria-label="Next month">›</button>
+        </div>
+      </div>
+      <div class="calendar-weekdays">${["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map(d => `<div>${d}</div>`).join("")}</div>
+      <div class="calendar-grid">${cells.join("")}</div>
+    </div>
+    <div class="card card-pad calendar-list">
+      <h3 class="card-title">My saved tee times</h3>
+      ${data.events.map(event => `
+        <div class="calendar-list-item">
+          <div class="teetime-logo">${esc(event.icon)}</div>
+          <div class="person-grow">
+            <div class="teetime-title">${esc(event.title)}</div>
+            <div class="teetime-meta">${esc(event.course)} · ${esc(event.when)}</div>
+            <div class="person-sub">${event.mine ? "You are hosting" : `Hosted by ${esc(event.hostName)}`}</div>
+          </div>
+          <button class="btn btn-ghost btn-sm" onclick="removeFromCalendar(${event.id})">Remove</button>
+        </div>`).join("") || `<div class="empty-note">No tee times saved yet. Accepted rounds can be added from Tee Times.</div>`}
+    </div>`;
 }
 
 // ---------- Messaging ----------
@@ -893,6 +995,7 @@ async function render() {
     switch (parts[0]) {
       case "network": await renderNetwork(); break;
       case "teetimes": await renderTeeTimes(); break;
+      case "calendar": await renderCalendar(); break;
       case "messages": await renderMessages(parts[1]); break;
       case "notifications": await renderNotifications(); break;
       case "profile": await renderProfile(parts[1] || "me"); break;
