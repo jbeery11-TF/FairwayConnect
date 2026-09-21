@@ -22,8 +22,15 @@ function initials(name) {
   return name.split(" ").map(w => w[0]).join("").slice(0, 2).toUpperCase();
 }
 
+function publicName(name) {
+  const parts = String(name || "Golfer").trim().split(/\s+/);
+  return parts.length > 1 ? `${parts[0]} ${parts.at(-1)[0]}.` : parts[0];
+}
+
 function avatar(u, size) {
-  return `<span class="avatar avatar-${size}" style="background:${esc(u.color)}">${initials(u.name)}</span>`;
+  const palette = ["#163A2B", "#3F7D55", "#8EA995", "#6B5C3E"];
+  const key = String(u.id || u.name || "G").split("").reduce((sum, ch) => sum + ch.charCodeAt(0), 0);
+  return `<span class="avatar avatar-${size}" style="background:${palette[key % palette.length]}">${initials(u.name)}</span>`;
 }
 
 function handicapLabel(h) {
@@ -134,9 +141,9 @@ function renderAuth() {
   $app.innerHTML = `
     <div class="auth-wrap">
       <div class="auth-hero">
-        <div style="font-size:54px">⛳</div>
-        <h1>FairwayConnect</h1>
-        <p>The professional network for golfers.<br>Find your foursome. Brag responsibly.</p>
+        <img class="auth-logo" src="logo.svg" alt="" />
+        <h1>Find Your Foursome.</h1>
+        <p>Find your course. Find your group. Play more golf.</p>
       </div>
       <div class="card">
         <div class="auth-tabs">
@@ -190,7 +197,7 @@ async function submitAuth(ev) {
     meBrief = data.user;
     go("feed");
     await render();
-    toast(authMode === "signup" ? "Welcome to the club ⛳" : "Welcome back ⛳");
+    toast(authMode === "signup" ? "Welcome to the club" : "Welcome back");
   } catch (e) {
     errEl.textContent = e.message;
   }
@@ -211,7 +218,7 @@ function railProfileCard(m) {
     <div class="card rail-left">
       <div class="rail-banner"></div>
       <div class="rail-avatar-wrap">${avatar(m, "lg")}</div>
-      <div class="rail-name"><a href="#/profile/me">${esc(m.name)}</a></div>
+      <div class="rail-name"><a href="#/profile/me">${esc(publicName(m.name))}</a></div>
       <div class="rail-headline">${esc(m.headline)}</div>
       <div class="rail-stats">
         <div class="rail-stat"><span>Handicap index</span><b>${handicapLabel(m.handicap)}</b></div>
@@ -230,7 +237,7 @@ function suggestionsCard(suggestions) {
         <div class="person-row">
           ${avatar(u, "sm")}
           <div class="person-grow">
-            <div class="person-name" onclick="go('profile/${u.id}')">${esc(u.name)}</div>
+            <div class="person-name" onclick="go('profile/${u.id}')">${esc(publicName(u.name))}</div>
             <div class="person-sub">${esc(u.headline)}</div>
           </div>
           <button class="btn btn-outline btn-sm" onclick="connect(${u.id}, '${esc(u.name)}')">+ Pair up</button>
@@ -239,7 +246,7 @@ function suggestionsCard(suggestions) {
 }
 
 function connect(id, name) {
-  act(api(`/users/${id}/connect`, "POST"), `Invitation sent to ${name} 🤝`);
+  act(api(`/users/${id}/connect`, "POST"), `Invitation sent to ${publicName(name)}`);
 }
 
 // ---------- Feed ----------
@@ -278,10 +285,10 @@ async function renderFeed() {
         ${suggestionsCard(data.suggestions)}
         <div class="card card-pad" style="margin-top:16px">
           <h3 class="card-title">Trending on the course</h3>
-          <div class="person-sub" style="padding:4px 0">🔥 #AerationSeason — grumbling intensifies</div>
-          <div class="person-sub" style="padding:4px 0">🏆 #USOpen — qualifying drama</div>
-          <div class="person-sub" style="padding:4px 0">🛒 #WITB — what's in the bag week</div>
-          <div class="person-sub" style="padding:4px 0">😤 #ThreePuttSupportGroup — you're not alone</div>
+          <div class="person-sub trend-line">#AerationSeason — grumbling intensifies</div>
+          <div class="person-sub trend-line">#USOpen — qualifying drama</div>
+          <div class="person-sub trend-line">#WITB — what's in the bag week</div>
+          <div class="person-sub trend-line">#ThreePuttSupportGroup — you're not alone</div>
         </div>
       </div>
     </div>`;
@@ -294,20 +301,20 @@ function postCard(p) {
       <div><b>${esc(p.scorecard.score)}</b>Score${p.scorecard.par ? ` (par ${esc(p.scorecard.par)})` : ""}</div>
       ${p.scorecard.fairways ? `<div><b>${esc(p.scorecard.fairways)}</b>Fairways</div>` : ""}
       ${p.scorecard.putts ? `<div><b>${esc(p.scorecard.putts)}</b>Putts</div>` : ""}
-      ${p.scorecard.course ? `<div style="align-self:center">📍 ${esc(p.scorecard.course)}</div>` : ""}
+      ${p.scorecard.course ? `<div style="align-self:center">Course · ${esc(p.scorecard.course)}</div>` : ""}
     </div>` : "";
   const menu = p.mine
-    ? `<button class="menu-item danger" onclick="deletePost(${p.id})">🗑 Delete post</button>`
-    : `<button class="menu-item" onclick="reportPost(${p.id})">🚩 Report post</button>
-       <button class="menu-item danger" onclick="blockUser(${a.id}, '${esc(a.name)}')">🚫 Block ${esc(a.name)}</button>`;
+    ? `<button class="menu-item danger" onclick="deletePost(${p.id})">Delete post</button>`
+    : `<button class="menu-item" onclick="reportPost(${p.id})">Report post</button>
+       <button class="menu-item danger" onclick="blockUser(${a.id}, '${esc(a.name)}')">Block ${esc(publicName(a.name))}</button>`;
   return `
     <div class="card" style="margin-top:16px">
       <div class="post-head">
         ${avatar(a, "md")}
         <div>
-          <div class="post-author" onclick="go('profile/${a.id}')">${esc(a.name)}</div>
+          <div class="post-author" onclick="go('profile/${a.id}')">${esc(publicName(a.name))}</div>
           <div class="post-sub">${esc(a.headline)}</div>
-          <div class="post-sub">${timeAgo(p.createdAt)} · 🌐</div>
+          <div class="post-sub">${timeAgo(p.createdAt)} · Network</div>
         </div>
         <details class="post-menu">
           <summary>⋯</summary>
@@ -317,19 +324,19 @@ function postCard(p) {
       <div class="post-body">${esc(p.text)}</div>
       ${score}
       <div class="post-stats">
-        <span>🏌️ ${p.likes} nice shot${p.likes === 1 ? "" : "s"}</span>
+        <span>${p.likes} nice shot${p.likes === 1 ? "" : "s"}</span>
         <span>${p.comments.length} comment${p.comments.length === 1 ? "" : "s"}</span>
       </div>
       <div class="post-actions">
-        <button class="post-action ${p.likedByMe ? "liked" : ""}" onclick="toggleLike(${p.id})">🏌️ Nice shot</button>
-        <button class="post-action" onclick="document.getElementById('comment-input-${p.id}').focus()">💬 Comment</button>
+        <button class="post-action ${p.likedByMe ? "liked" : ""}" onclick="toggleLike(${p.id})">Nice shot</button>
+        <button class="post-action" onclick="document.getElementById('comment-input-${p.id}').focus()">Comment</button>
       </div>
       <div class="comments">
         ${p.comments.map(c => `
           <div class="comment">
             ${avatar(c.author, "sm")}
             <div class="comment-bubble">
-              <div class="comment-author" style="cursor:pointer" onclick="go('profile/${c.author.id}')">${esc(c.author.name)}</div>
+              <div class="comment-author" style="cursor:pointer" onclick="go('profile/${c.author.id}')">${esc(publicName(c.author.name))}</div>
               ${esc(c.text)}
             </div>
           </div>`).join("")}
@@ -362,7 +369,7 @@ async function publishPost() {
     if (sc.score || sc.course) body.scorecard = sc;
   }
   composerScorecardOpen = false;
-  await act(api("/posts", "POST", body), "Posted to your network ⛳");
+  await act(api("/posts", "POST", body), "Posted to your network");
 }
 
 async function toggleLike(pid) {
@@ -408,13 +415,13 @@ async function renderNetwork() {
             <div class="invite-card">
               ${avatar(u, "md")}
               <div class="person-grow">
-                <div class="person-name" onclick="go('profile/${u.id}')">${esc(u.name)}</div>
+                <div class="person-name" onclick="go('profile/${u.id}')">${esc(publicName(u.name))}</div>
                 <div class="person-sub">${esc(u.headline)}</div>
                 <div class="person-sub">Wants to join your foursome network</div>
               </div>
               <div class="invite-actions">
                 <button class="btn btn-ghost btn-sm" onclick="act(api('/users/${u.id}/decline', 'POST'))">Ignore</button>
-                <button class="btn btn-primary btn-sm" onclick="act(api('/users/${u.id}/connect', 'POST'), 'You\\'re now connected with ${esc(u.name)} ⛳')">Accept</button>
+                <button class="btn btn-primary btn-sm" onclick="act(api('/users/${u.id}/connect', 'POST'), 'You\\'re now connected with ${esc(publicName(u.name))}')">Accept</button>
               </div>
             </div>`).join("") || `<div class="empty-note">No pending invitations. Go forth and network on the range.</div>`}
         </div>
@@ -426,7 +433,7 @@ async function renderNetwork() {
               <div class="people-card">
                 <div class="people-card-banner"></div>
                 ${avatar(u, "lg")}
-                <div class="people-card-name" onclick="go('profile/${u.id}')">${esc(u.name)}</div>
+                <div class="people-card-name" onclick="go('profile/${u.id}')">${esc(publicName(u.name))}</div>
                 <div class="people-card-sub">${esc(u.headline)}</div>
                 ${u.pending
                   ? `<button class="btn btn-ghost btn-sm" disabled>Pending</button>`
@@ -442,7 +449,7 @@ async function renderNetwork() {
           <div class="person-row">
             ${avatar(u, "sm")}
             <div class="person-grow">
-              <div class="person-name" onclick="go('profile/${u.id}')">${esc(u.name)}</div>
+              <div class="person-name" onclick="go('profile/${u.id}')">${esc(publicName(u.name))}</div>
               <div class="person-sub">${esc(u.headline)}</div>
             </div>
             <button class="btn btn-outline btn-sm" onclick="go('messages/${u.id}')">Message</button>
@@ -475,6 +482,14 @@ function todayISO() {
   return local.toISOString().slice(0, 10);
 }
 
+function teeMarker(whenText) {
+  const match = /^(\d{4})-(\d{2})-(\d{2})\s+at\s+(\d{1,2}):(\d{2})\s+(AM|PM)$/.exec(whenText || "");
+  if (!match) return `<div class="tee-marker"><span>ROUND</span><b>TEE</b><small>TIME</small></div>`;
+  const date = new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
+  const day = date.toLocaleDateString(undefined, {weekday: "short"}).toUpperCase();
+  return `<div class="tee-marker"><span>${day} ${Number(match[3])}</span><b>${Number(match[4])}:${match[5]}</b><small>${match[6]}</small></div>`;
+}
+
 async function renderTeeTimes() {
   const data = await api("/teetimes");
   const calendarPrompt = data.teetimes.find(t =>
@@ -496,7 +511,7 @@ async function renderTeeTimes() {
         </div>
         ${data.teetimes.map(t => `
           <div class="teetime">
-            <div class="teetime-logo">${esc(t.icon)}</div>
+            ${teeMarker(t.when)}
             <div class="person-grow">
               <div class="teetime-title">${esc(t.title)}</div>
               <div class="teetime-meta">${esc(t.course)} · ${esc(t.when)}${t.postalCode ? ` · ZIP ${esc(t.postalCode)}` : ""}</div>
@@ -504,7 +519,7 @@ async function renderTeeTimes() {
               <div class="teetime-foot">
                 ${t.tags.map(tag => `<span class="pill">${esc(tag)}</span>`).join("")}
                 <span class="pill pill-gold">${t.spotsLeft} spot${t.spotsLeft === 1 ? "" : "s"} open</span>
-                <span>Hosted by <a href="#/profile/${t.host.id}" style="color:var(--green);font-weight:600">${esc(t.host.name)}</a></span>
+                <span>Hosted by <a href="#/profile/${t.host.id}" style="color:var(--green);font-weight:600">${esc(publicName(t.host.name))}</a></span>
               </div>
               ${t.mine && t.requests.length ? `
                 <div class="tee-requests">
@@ -513,7 +528,7 @@ async function renderTeeTimes() {
                     <div class="tee-request-row">
                       ${avatar(u, "sm")}
                       <div class="person-grow">
-                        <div class="person-name" onclick="go('profile/${u.id}')">${esc(u.name)}</div>
+                        <div class="person-name" onclick="go('profile/${u.id}')">${esc(publicName(u.name))}</div>
                         <div class="person-sub">${u.status === "accepted" ? "Spot confirmed" : "Waiting for your response"}</div>
                       </div>
                       ${u.status === "accepted"
@@ -536,7 +551,7 @@ async function renderTeeTimes() {
                       : `<button class="btn btn-outline btn-sm" onclick="addToCalendar(${t.id})">＋ Add to calendar</button>`
                   : t.spotsLeft === 0
                     ? `<button class="btn btn-ghost btn-sm" disabled>Full</button>`
-                    : `<button class="btn btn-primary btn-sm" onclick="act(api('/teetimes/${t.id}/join', 'POST'), 'Request sent — keep your spikes ready 👟')">Request spot</button>`}
+                    : `<button class="btn btn-primary btn-sm" onclick="act(api('/teetimes/${t.id}/join', 'POST'), 'Request sent — awaiting host')">Request spot</button>`}
             </div>
           </div>`).join("") || `<div class="empty-note">No open tee times. Post one!</div>`}
       </div>
@@ -660,7 +675,7 @@ async function reviewTeeTimeRequest(teetimeId, userId, action) {
 }
 
 async function addToCalendar(teetimeId) {
-  await act(api(`/teetimes/${teetimeId}/calendar`, "POST"), "Added to your FairwayConnect calendar 📅");
+  await act(api(`/teetimes/${teetimeId}/calendar`, "POST"), "Added to your Fairway Connect calendar");
 }
 
 async function createTeeTime(ev) {
@@ -679,7 +694,7 @@ async function createTeeTime(ev) {
     tags: [document.getElementById("ttTags").value],
   };
   teetimeFormOpen = false;
-  await act(api("/teetimes", "POST", body), "Tee time posted ⛳");
+  await act(api("/teetimes", "POST", body), "Tee time posted");
   return false;
 }
 
@@ -731,7 +746,7 @@ async function renderCalendar() {
         <div class="calendar-day-number">${day}</div>
         ${events.map(event => `
           <button class="calendar-event" onclick="go('teetimes')" title="${esc(event.course)} · ${esc(calendarTime(event.when))}">
-            ${esc(event.icon)} ${esc(calendarTime(event.when))}<br><b>${esc(event.title)}</b>
+            ${esc(calendarTime(event.when))}<br><b>${esc(event.title)}</b>
           </button>`).join("")}
       </div>`);
   }
@@ -757,11 +772,11 @@ async function renderCalendar() {
       <h3 class="card-title">My saved tee times</h3>
       ${data.events.map(event => `
         <div class="calendar-list-item">
-          <div class="teetime-logo">${esc(event.icon)}</div>
+          ${teeMarker(event.when)}
           <div class="person-grow">
             <div class="teetime-title">${esc(event.title)}</div>
             <div class="teetime-meta">${esc(event.course)} · ${esc(event.when)}</div>
-            <div class="person-sub">${event.mine ? "You are hosting" : `Hosted by ${esc(event.hostName)}`}</div>
+            <div class="person-sub">${event.mine ? "You are hosting" : `Hosted by ${esc(publicName(event.hostName))}`}</div>
           </div>
           <button class="btn btn-ghost btn-sm" onclick="removeFromCalendar(${event.id})">Remove</button>
         </div>`).join("") || `<div class="empty-note">No tee times saved yet. Accepted rounds can be added from Tee Times.</div>`}
@@ -786,14 +801,14 @@ async function renderMessages(withId) {
                onclick="go('messages/${t.with.id}')">
             ${avatar(t.with, "md")}
             <div class="person-grow">
-              <div class="person-name">${esc(t.with.name)}</div>
+              <div class="person-name">${esc(publicName(t.with.name))}</div>
               <div class="msg-preview">${esc(t.last)}</div>
             </div>
           </div>`).join("") || `<div class="empty-note">No conversations yet.<br>Message a connection from their profile.</div>`}
       </div>
       ${thread ? `
         <div class="msg-pane">
-          <div class="msg-pane-head"><a class="msg-back" href="#/messages">‹</a>${esc(thread.with.name)} <span class="person-sub" style="font-weight:400">· ${esc(thread.with.headline)}</span></div>
+          <div class="msg-pane-head"><a class="msg-back" href="#/messages">‹</a>${esc(publicName(thread.with.name))} <span class="person-sub" style="font-weight:400">· ${esc(thread.with.headline)}</span></div>
           <div class="msg-scroll">
             ${thread.messages.map(m => `
               <div class="bubble ${m.from === meBrief.id ? "bubble-me" : "bubble-them"}">${esc(m.text)}</div>`).join("")}
@@ -839,16 +854,16 @@ async function renderNotifications() {
       <div class="card">
         ${data.notifications.map(n => `
           <div class="notif ${n.unread ? "unread" : ""}" ${n.link ? `style="cursor:pointer" onclick="location.hash='${esc(n.link)}'"` : ""}>
-            <span style="font-size:22px">${esc(n.icon)}</span>
+            <span class="notif-mark" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M6 17h12l-2-3v-4a4 4 0 0 0-8 0v4Zm4 3h4"/></svg></span>
             <span>${esc(n.text)}</span>
             <span class="notif-time">${timeAgo(n.createdAt)}</span>
           </div>`).join("") || `<div class="empty-note">All quiet on the course.</div>`}
       </div>
       <div class="card card-pad">
         <h3 class="card-title">Notification settings</h3>
-        <div class="person-sub" style="padding:3px 0">🤝 Foursome invitations — on</div>
-        <div class="person-sub" style="padding:3px 0">💬 Comments on your posts — on</div>
-        <div class="person-sub" style="padding:3px 0">📋 Tee time requests — on</div>
+        <div class="settings-line">Foursome invitations <span class="pill">On</span></div>
+        <div class="settings-line">Comments on your posts <span class="pill">On</span></div>
+        <div class="settings-line">Tee time requests <span class="pill">On</span></div>
       </div>
     </div>`;
 }
@@ -873,7 +888,7 @@ async function renderProfile(id) {
         : u.status === "pending"
           ? `<button class="btn btn-ghost" disabled>Invitation pending</button>`
           : u.status === "invited-me"
-            ? `<button class="btn btn-primary" onclick="act(api('/users/${u.id}/connect', 'POST'), 'Connected ⛳')">Accept invitation</button>`
+            ? `<button class="btn btn-primary" onclick="act(api('/users/${u.id}/connect', 'POST'), 'Connected')">Accept invitation</button>`
             : `<button class="btn btn-primary" onclick="connect(${u.id}, '${esc(u.name)}')">+ Pair up</button>`}
       <button class="btn btn-outline" onclick="go('messages/${u.id}')">Message</button>
       <button class="btn btn-danger" onclick="blockUser(${u.id}, '${esc(u.name)}')">Block</button>`;
@@ -885,7 +900,7 @@ async function renderProfile(id) {
           <div class="profile-banner"></div>
           <div class="profile-head">
             ${avatar(u, "xl")}
-            <div class="profile-name">${esc(u.name)}</div>
+            <div class="profile-name">${esc(publicName(u.name))}</div>
             <div class="profile-headline">${esc(u.headline)}</div>
             <div class="profile-loc">${[
               u.location && esc(u.location),
@@ -931,7 +946,7 @@ async function renderProfile(id) {
               </div>
               ${isMe ? "" : s.endorsedByMe
                 ? `<button class="btn btn-ghost btn-sm" disabled>Endorsed ✓</button>`
-                : `<button class="btn btn-outline btn-sm" onclick="act(api('/users/${u.id}/endorse', 'POST', {skillId: ${s.id}}), 'Endorsed 🏌️')">+ Endorse</button>`}
+                : `<button class="btn btn-outline btn-sm" onclick="act(api('/users/${u.id}/endorse', 'POST', {skillId: ${s.id}}), 'Endorsed')">+ Endorse</button>`}
             </div>`).join("") || `<div class="empty-note">No strengths listed yet.</div>`}
         </div>
       </div>
@@ -940,7 +955,7 @@ async function renderProfile(id) {
         ${u.courses.length ? `
           <div class="card card-pad">
             <h3 class="card-title">Courses played</h3>
-            ${u.courses.map(c => `<div class="person-sub" style="padding:4px 0">⛳ ${esc(c)}</div>`).join("")}
+            ${u.courses.map(c => `<div class="person-sub course-line">${esc(c)}</div>`).join("")}
           </div>` : ""}
       </div>
     </div>`;
@@ -964,7 +979,7 @@ searchInput.addEventListener("input", () => {
           <div class="search-result" onclick="searchGo(${u.id})">
             ${avatar(u, "sm")}
             <div>
-              <div style="font-weight:700;font-size:14px">${esc(u.name)}</div>
+              <div style="font-weight:700;font-size:14px">${esc(publicName(u.name))}</div>
               <div class="person-sub">${esc(u.headline)}</div>
             </div>
           </div>`).join("")

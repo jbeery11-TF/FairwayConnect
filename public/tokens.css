@@ -1,0 +1,146 @@
+/* ==========================================================================
+   Fairway Connect — design tokens
+   Extracted from the approved design canvas. Every value used in
+   screens/*.html resolves to one of these tokens; nothing else is canonical.
+   ========================================================================== */
+
+:root {
+  /* ---- Core palette ---------------------------------------------------- */
+  --fc-green-deep:    #163A2B; /* navigation, primary buttons, dark cards */
+  --fc-green-heritage:#0E2A1F; /* hover on deep green */
+  --fc-green-pressed: #0B2118; /* active/pressed on deep green */
+  --fc-cream:         #F6F1E7; /* page background, text on dark green */
+  --fc-white:         #FFFFFF; /* card background */
+  --fc-sand:          #D8C7A5; /* accent borders, tee markers, badges */
+  --fc-sage:          #8EA995; /* secondary avatars, non-text accents */
+  --fc-charcoal:      #252A27; /* primary text */
+  --fc-gray:          #747A76; /* ICONS + 24px-and-up text only */
+  --fc-success:       #3F7D55; /* success dots, switch-on */
+
+  /* ---- Derived tints (all in-family; do not invent new ones) ------------ */
+  --fc-sand-border:   #E3D7BE; /* default 1px card border */
+  --fc-sand-tint:     #F0EADC; /* secondary tag fill, filter strip */
+  --fc-sand-strong:   #C9B58E; /* card border on hover */
+  --fc-sand-text:     #6B5C3E; /* text on --fc-sand-tint (4.5:1+) */
+  --fc-sand-dot:      #A08B5E; /* status dot on sand tags */
+  --fc-cream-hover:   #EFEADD; /* hover fill on white/outline buttons */
+  --fc-cream-row:     #FBF8F1; /* table row hover, muted rows */
+  --fc-sage-tint:     #E4EBE5; /* icon tile background */
+  --fc-sage-border:   #C6D6CA;
+  --fc-success-tint:  #E9F1EA; /* success tag fill */
+  --fc-success-line:  #CFE0D3; /* success tag border */
+  --fc-success-text:  #2E5F3F; /* text on success tint (6.2:1) */
+  --fc-success-deep:  #356A48; /* switch-on border */
+  --fc-text-body:     #3F4642; /* body text on tinted grounds */
+  --fc-text-muted:    #5C625E; /* ALL small secondary text (6.2:1 on white) */
+  --fc-hairline:      #EFE7D6; /* thin internal divider */
+  --fc-off-bg:        #DDE0DB; /* switch-off track */
+  --fc-off-border:    #C9CEC8;
+  --fc-disabled-bg:   #E4E6E1;
+  --fc-disabled-text: #6E746F;
+
+  /* ---- Type ------------------------------------------------------------ */
+  --fc-font-display: 'Cormorant Garamond', Georgia, serif;
+  --fc-font-ui: 'Manrope', -apple-system, 'Helvetica Neue', Arial, sans-serif;
+  /* Google Fonts:
+     Cormorant+Garamond:wght@500;600;700 — display weights used: 500, 600
+     Manrope:wght@400;500;600;700;800    — UI weights used: 400,500,600,700,800 */
+
+  /* Display scale (Cormorant Garamond 600 unless noted) */
+  --fc-display-hero:    46px; /* "Find Your Foursome." / "You're in."  line-height 1.0–1.02 */
+  --fc-display-page:    38px; /* desktop page title, line-height 1.1 */
+  --fc-display-section: 30px; /* card headline, e.g. "Cancellation received" */
+  --fc-display-metric:  52px; /* metric card figure, line-height 1 */
+  --fc-display-stat:    40px; /* performance figure */
+  --fc-display-time:    24px; /* tee-time marker */
+
+  /* UI scale (Manrope) */
+  --fc-text-16: 16px; /* primary button label, round title   700 */
+  --fc-text-15: 15px; /* secondary button, row title          700 */
+  --fc-text-14: 14px; /* body / control label             400–700 */
+  --fc-text-13: 13px; /* dense body, small button         500–700 */
+  --fc-text-12: 12px; /* caption, meta                    500–700 */
+  --fc-text-11: 11px; /* tag text, section label          700 */
+  --fc-text-10: 10px; /* marker eyebrow, badge            700–800 */
+
+  /* Section label = 11px / 700 / uppercase / .15em / --fc-text-muted
+     Marker eyebrow = 10px / 800 / uppercase / .14em */
+  --fc-track-label: .15em;
+  --fc-track-eyebrow: .14em;
+
+  /* ---- Geometry -------------------------------------------------------- */
+  --fc-radius-sm:   9px;  /* badge, inline button */
+  --fc-radius-md:   11px; /* icon button, tee marker, table row */
+  --fc-radius-lg:   13px; /* primary button */
+  --fc-radius-card: 16px; /* card */
+  --fc-radius-pill: 999px;
+  --fc-space: 4px; /* all spacing is a multiple: 4 6 8 10 12 14 16 18 20 22 24 26 */
+  --fc-touch-min: 44px; /* minimum mobile hit target */
+
+  /* ---- Elevation ------------------------------------------------------- */
+  --fc-shadow-card:    0 14px 30px -22px rgba(22, 58, 43, .5);
+  --fc-shadow-hover:   0 12px 26px -18px rgba(22, 58, 43, .45);
+  --fc-shadow-button:  0 12px 24px -14px rgba(22, 58, 43, .75);
+  --fc-shadow-emphasis:0 22px 44px -26px rgba(14, 42, 31, .85); /* dark alert card */
+  --fc-shadow-sticky:  0 -12px 28px -24px rgba(22, 58, 43, .6); /* sticky footer */
+
+  /* ---- Borders & dividers ---------------------------------------------- */
+  --fc-border-card:     1px solid var(--fc-sand-border);
+  --fc-border-selected: 1.5px solid var(--fc-green-deep);
+  --fc-border-outline:  1.5px solid var(--fc-green-deep); /* secondary button */
+  --fc-divider:         1px solid var(--fc-sand-border);
+  --fc-divider-score:   1px dashed var(--fc-sand-border); /* scorecard split */
+  --fc-divider-hair:    1px solid var(--fc-hairline);
+
+  /* ---- Focus ----------------------------------------------------------- */
+  --fc-focus-ring: 2px solid var(--fc-sand);
+  --fc-focus-offset: 2px;
+
+  /* ---- Motion ---------------------------------------------------------- */
+  --fc-ease: .16s ease;       /* color transitions */
+  --fc-ease-slow: .18s ease;  /* switch knob, card elevation */
+}
+
+/* --------------------------------------------------------------------------
+   Interaction states as used in the comps. In the static screens these are
+   the only rules that are not inline; port them to real component states.
+   -------------------------------------------------------------------------- */
+
+.fc-p { transition: background-color var(--fc-ease), box-shadow var(--fc-ease); }
+.fc-p:hover  { background-color: var(--fc-green-heritage) !important; }
+.fc-p:active { transform: translateY(1px); }
+
+.fc-s:hover { background-color: var(--fc-cream-hover) !important; }
+
+/* tertiary / on-dark-green */
+.fc-t:hover { background-color: rgba(246, 241, 231, .14) !important; }
+
+.fc-card { transition: box-shadow var(--fc-ease-slow), border-color var(--fc-ease-slow); }
+.fc-card:hover {
+  border-color: var(--fc-sand-strong) !important;
+  box-shadow: var(--fc-shadow-hover) !important;
+}
+
+.fc-row { transition: background-color var(--fc-ease); }
+.fc-row:hover { background-color: var(--fc-cream-row); }
+
+:focus-visible { outline: var(--fc-focus-ring); outline-offset: var(--fc-focus-offset); }
+
+@keyframes fc-spin { to { transform: rotate(360deg); } }
+.fc-spin { animation: fc-spin 900ms linear infinite; transform-origin: 50% 50%; }
+
+@keyframes fc-pulse { 0%, 100% { opacity: 1; } 50% { opacity: .45; } }
+.fc-skel { animation: fc-pulse 1.4s ease-in-out infinite; }
+
+/* --------------------------------------------------------------------------
+   Contrast rules that must survive the port
+   --------------------------------------------------------------------------
+   PASS  --fc-charcoal    on white / cream        ~13:1
+   PASS  --fc-text-muted  on white                 6.2:1   <- small muted text
+   PASS  --fc-text-body   on --fc-sand-tint        ~7:1
+   PASS  --fc-cream       on --fc-green-deep       12.6:1
+   PASS  --fc-success-text on --fc-success-tint     6.2:1
+   PASS  --fc-success     on white                  4.9:1
+   FAIL  --fc-gray        on white                  4.4:1  <- icons and 24px+ only
+   FAIL  --fc-sage        as text on white / cream         <- never text
+   -------------------------------------------------------------------------- */

@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" width="48" height="48" role="img" aria-label="Fairway Connect">
+  <title>Fairway Connect</title>
+  <!--
+    The mark: a map pin (location) with a knocked-out flagstick and pennant (golf)
+    and three dots at the base (the foursome / community).
+
+    Two-color knockout: the pin is one filled shape, the flag and dots are cut out
+    in whatever sits behind the mark. Recolor by swapping the two fills only:
+      on cream / white  -> pin #163A2B, knockout #F6F1E7 or #FFFFFF
+      on deep green     -> pin #F6F1E7, knockout #163A2B
+      on heritage green -> pin #D8C7A5, knockout #0E2A1F
+
+    Below 28px, drop the three dots (keep pin + flag, stroke-width 2.9–3.6 on the
+    stick) — see 07-brand-identity.html for the 24 / 20 / 16px compact versions.
+    Clearspace: half the mark's height on all sides. Minimum size 16px.
+  -->
+  <path d="M8 19.8A16 16 0 1 1 40 19.8c0 4-2 8.4-4.8 12.4-2.9 4.1-6.4 7.6-8.7 9.7a3.6 3.6 0 0 1-5 0c-2.3-2.1-5.8-5.6-8.7-9.7C10 28.2 8 23.8 8 19.8Z" fill="#163A2B"/>
+  <path d="M24 26.2V11.2" stroke="#F6F1E7" stroke-width="2.5" stroke-linecap="round"/>
+  <path d="M25.1 11.6 33.4 14.4 25.1 17.2Z" fill="#F6F1E7"/>
+  <circle cx="17.5" cy="30.8" r="1.9" fill="#F6F1E7"/>
+  <circle cx="24" cy="30.8" r="1.9" fill="#F6F1E7"/>
+  <circle cx="30.5" cy="30.8" r="1.9" fill="#F6F1E7"/>
+</svg>
