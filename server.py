@@ -1134,6 +1134,14 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/":
             path = "/index.html"
         full = os.path.realpath(os.path.join(PUBLIC, path.lstrip("/")))
+        if os.path.isdir(full) and full.startswith(PUBLIC):
+            if not path.endswith("/"):  # /dallas -> /dallas/ so relative URLs resolve
+                self.send_response(301)
+                self.send_header("Location", path + "/")
+                self.send_header("Content-Length", "0")
+                self.end_headers()
+                return
+            full = os.path.join(full, "index.html")
         if not full.startswith(PUBLIC) or not os.path.isfile(full):
             full = os.path.join(PUBLIC, "index.html")  # SPA fallback
         ext = os.path.splitext(full)[1]
